@@ -46,8 +46,35 @@ def get_twitter_name(actor_name):
 		if dic['verified'] == True:
 			return '@'+dic['screen_name']
 
+def user_info(user_name):
+	if user_name in CACHE_DICTION:
+		response = CACHE_DICTION[user_name]
+
+	else:
+		response = api.get_user(user_name)
+		CACHE_DICTION[user_name] = response
+		# print("fetching\n")
+		cache_file = open(CACHE_FNAME, 'w')
+		cache_file.write(json.dumps(CACHE_DICTION))
+		cache_file.close()
+
+	return response
+
+def twitter_search(search_term):
+	if search_term in CACHE_DICTION:
+		response = CACHE_DICTION[search_term]
+
+	else:
+		response = api.search(q=search_term)
+		CACHE_DICTION[search_term] = response
+		cache_file = open(CACHE_FNAME, 'w')
+		cache_file.write(json.dumps(CACHE_DICTION))
+		cache_file.close()
+
+	return response['statuses']
+
 def twitter_neighborhood(twitter_name):
-	pass
+	pass #still not sure about what the "neighborhood" consists of and what tweepy api method to use
 
 #OMDB request
 def omdb_search(move_title):
@@ -138,6 +165,9 @@ for movie in movie_class_instances:
 # print(top_actors_of_movies_not_repeated)
 twitter_name_search = [get_twitter_name(actor) for actor in top_actors_of_movies_not_repeated] #retrieving twitter name for each top actor fromt the movie instances; list comprehension
 # print(twitter_name_search)
+
+
+
 
 conn = sqlite3.connect('final_probject.db')
 cur = conn.cursor()
