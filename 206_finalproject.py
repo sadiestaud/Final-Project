@@ -58,9 +58,16 @@ def user_info(user_name):
 		cache_file.write(json.dumps(CACHE_DICTION))
 		cache_file.close()
 
-	return response
+	u_id = response['id_str']
+	name = "@"+response['screen_name']
+	favorite_count = response['favourites_count']
+	tup = (u_id, name, favorite_count)	
 
-def twitter_search(search_term):
+	return tup
+
+def twitter_search(search_term): #similar to project 2
+	search_term = 'twitter_{}'.format(search_term)
+
 	if search_term in CACHE_DICTION:
 		response = CACHE_DICTION[search_term]
 
@@ -70,11 +77,31 @@ def twitter_search(search_term):
 		cache_file = open(CACHE_FNAME, 'w')
 		cache_file.write(json.dumps(CACHE_DICTION))
 		cache_file.close()
+	tweets = []
 
-	return response['statuses']
+	for tweet in response['statuses']:
+		tweets.append(tweet)
+	ls = []
+	for tweet in tweets:
+		tweet_id = tweet['id']
+		text = tweet['text']
+		u = tweet['user']
+		user_name = "@"+u['screen_name']
+		actor = search_term.strip('twitter_')
+		favorites = tweet['favorite_count']
+		retweets = tweet['retweet_count']
+		tup = (tweet_id, text, user_name, actor, favorites, retweets)
+		ls.append(tup)
 
-def twitter_neighborhood(twitter_name):
-	pass #still not sure about what the "neighborhood" consists of and what tweepy api method to use
+	return ls
+
+def get_twitter_users(tweet): #from project 3
+	return [name[1:] for name in re.findall(r"@\w*", tweet)] #list of twitter names
+
+#i feel like there is a better way to combine the several functions i have for twitter - i am still not certain as to what i should be searching for on twitter
+#and the return values that i should get in order to put into the rest of my databases. after that, i feel that i have a really good understanding of the project
+#and am excited to finish!!!
+
 
 #OMDB request
 def omdb_search(move_title):
@@ -152,9 +179,9 @@ class Movie():
 		return sources
 
 
-
-list_of_movies = ['the avengers', 'the big short', 'moonlight', 'manchester by the sea', 'zootopia', "captain america: civil war", 'la la land']
-movie_requests = [omdb_search(movie) for movie in list_of_movies] #list comprehension
+######### ORGANIZING THE DATA ###########
+list_of_movies = ['the avengers', 'the big short', 'moonlight']
+movie_requests = [omdb_search(movie) for movie in list_of_movies] #list comprehension of instances of movies in the Movie class
 # print(movie_requests)
 movie_class_instances = [Movie(movie) for movie in movie_requests] #list comprehension for movie instances
 top_actors_of_movies_not_repeated = []
@@ -162,35 +189,6 @@ for movie in movie_class_instances:
 	actor_name = movie.num1_actor() #getting the top actor for every movie
 	if actor_name not in top_actors_of_movies_not_repeated:
 		top_actors_of_movies_not_repeated.append(actor_name)
-# print(top_actors_of_movies_not_repeated)
-twitter_name_search = [get_twitter_name(actor) for actor in top_actors_of_movies_not_repeated] #retrieving twitter name for each top actor fromt the movie instances; list comprehension
-# print(twitter_name_search)
-
-
-
-
-conn = sqlite3.connect('final_probject.db')
-cur = conn.cursor()
-
-cur.execute("DROP TABLE IF EXISTS Tweets")
-cur.execute("DROP TABLE IF EXISTS Users")
-cur.execute("DROP TABLE IF EXISTS Movies")
-
-#tweets db
-table_spec = "CREATE TABLE IF NOT EXISTS "
-table_spec += "Tweets (tweet_id PRIMARY KEY, text TEXT, screen_name TEXT, movie_search TEXT, favorites INTEGER, retweets INTEGER)"
-cur.execute(table_spec)
-
-#users db
-table_spec = "CREATE TABLE IF NOT EXISTS "
-table_spec += "Users (user_id PRIMARY KEY, screen_name TEXT, favorites INTEGER)"
-cur.execute(table_spec)
-
-#movies db
-table_spec = "CREATE TABLE IF NOT EXISTS "
-table_spec += "Movies (imdbID PRIMARY KEY, title TEXT, director TEXT, languages INTEGER, imdbRating INTEGER, top_actor TEXT)"
-cur.execute(table_spec)
-
 #passing information into database
 movie_table = []
 for movie in movie_class_instances:
@@ -203,11 +201,88 @@ for movie in movie_class_instances:
 	tup = (imdbID, title, director, languages, imdbRating, top_actor)
 	movie_table.append(tup)
 
+
+dic_of_twitter_search = {actor: twitter_search(actor) for actor in top_actors_of_movies_not_repeated} #dictionary comprehension; actor name is key, and its value is a list of dictionaries containing tweets about each of the actors
+abc = [] #creating a list of lists that contain tuples of twitter information; using this to make it easier to unpack to the datebase
+for actor in top_actors_of_movies_not_repeated:
+	abc.append(twitter_search(actor))
+# print(json.dumps(abc, indent = 2))
+
+handles_of_mentions = []
+for ls in abc:
+	for tup in ls:
+		text = tup[1]
+		names = get_twitter_users(text)
+		handles_of_mentions.append(names)
+
+nz = []
+for ls in handles_of_mentions:
+	for handle in ls:
+		try:
+			names = user_info(handle)
+		except:
+			pass
+		if names not in nz:
+			nz.append(names)
+		else:
+			pass
+
+for ls in abc:
+	for tup in ls:
+		name = tup[2]
+		name_search = user_info(name)
+		if name_search not in nz:
+			nz.append(name_search)
+
+
+
+######### CREATING THE DATABASE TABLES ###########
+conn = sqlite3.connect('final_probject.db')
+cur = conn.cursor()
+
+cur.execute("DROP TABLE IF EXISTS Tweets")
+cur.execute("DROP TABLE IF EXISTS Users")
+cur.execute("DROP TABLE IF EXISTS Movies")
+
+#tweets db
+table_spec = "CREATE TABLE IF NOT EXISTS "
+table_spec += "Tweets (tweet_id PRIMARY KEY, text TEXT, screen_name TEXT, actor_search TEXT, favorites INTEGER, retweets INTEGER)"
+cur.execute(table_spec)
+
+#users db
+table_spec = "CREATE TABLE IF NOT EXISTS "
+table_spec += "Users (user_id PRIMARY KEY, screen_name TEXT, favorites INTEGER)"
+cur.execute(table_spec)
+
+#movies db
+table_spec = "CREATE TABLE IF NOT EXISTS "
+table_spec += "Movies (imdbID PRIMARY KEY, title TEXT, director TEXT, languages INTEGER, imdbRating INTEGER, top_actor TEXT)"
+cur.execute(table_spec)
+
+
+######### EXECUTING THE DATA INTO THE TABLES ###########
 statement = 'INSERT INTO Movies VALUES (?,?,?,?,?,?)'
 for m in movie_table:
 	cur.execute(statement, m)
-
 conn.commit()
+
+
+statement = 'INSERT INTO Tweets VALUES (?,?,?,?,?,?)'
+for ls in abc:
+	for x in ls:
+		cur.execute(statement, x)
+conn.commit()
+
+
+statement = 'INSERT INTO Users VALUES (?,?,?)'
+for tup in nz:
+	cur.execute(statement, tup)
+conn.commit()
+
+######### THE QUERIES ###########
+
+
+
 
 
 
@@ -230,6 +305,7 @@ class OMDB(unittest.TestCase):
 		movie = omdb_search("the great outdoors")
 		self.assertEqual(type(movie), type({}), 'testing that it will return a dictionary')
 class Movie(unittest.TestCase):
+	#i am confused abut why these test cases are not good?
 	def test_movie_class1(self):
 		movie = {"Title":"The Great Outdoors","Year":"1988","Rated":"PG","Released":"17 Jun 1988","Runtime":"91 min","Genre":"Comedy","Director":"Howard Deutch","Writer":"John Hughes","Actors":"Dan Aykroyd, John Candy, Stephanie Faracy, Annette Bening","Plot":"A Chicago man's hope for a peaceful family vacation in the woods is shattered when the annoying in-laws drop in.","Language":"English","Country":"USA","Awards":"N/A","Poster":"https://images-na.ssl-images-amazon.com/images/M/MV5BZDVkNDQ3MDItZTBlOS00ZGU0LTk0ZDUtYmE2YzNmOTM4YzBhXkEyXkFqcGdeQXVyMjU5OTg5NDc@._V1_SX300.jpg","Ratings":[{"Source":"Internet Movie Database","Value":"6.6/10"},{"Source":"Rotten Tomatoes","Value":"40%"}],"Metascore":"N/A","imdbRating":"6.6","imdbVotes":"29,942","imdbID":"tt0095253","Type":"movie","DVD":"30 Jun 1998","BoxOffice":"N/A","Production":"Universal Pictures","Website":"N/A","Response":"True"}
 		x = Movie(movie)
