@@ -29,7 +29,7 @@ try:
 except:
 	CACHE_DICTION = {}
 
-# twitter handle requests #from HW 5
+# twitter handle requests and creating  string of full handle #similar to HW 5
 def get_twitter_name(actor_name):
 	if actor_name in CACHE_DICTION:
 		# print("\nUSING CACHE\n")
@@ -47,6 +47,7 @@ def get_twitter_name(actor_name):
 		if dic['verified'] == True:
 			return '@'+dic['screen_name']
 
+#function that creates a tuple of important user information to be passed into the database easily
 def user_info(user_name):
 	if user_name in CACHE_DICTION:
 		response = CACHE_DICTION[user_name]
@@ -66,6 +67,7 @@ def user_info(user_name):
 
 	return tup
 
+#twitter search function that returns a list of tuples that contian information about each tweet
 def twitter_search(search_term): #similar to project 2
 	search_term = 'twitter_{}'.format(search_term)
 
@@ -96,15 +98,11 @@ def twitter_search(search_term): #similar to project 2
 
 	return ls
 
+#using regex to make a list of user names found in strings of text
 def get_twitter_users(tweet): #from project 3
 	return [name[1:] for name in re.findall(r"@\w*", tweet)] #list of twitter names
 
-#i feel like there is a better way to combine the several functions i have for twitter - i am still not certain as to what i should be searching for on twitter
-#and the return values that i should get in order to put into the rest of my databases. after that, i feel that i have a really good understanding of the project
-#and am excited to finish!!!
-
-
-#OMDB request
+#OMDB request to create a dictionary for each movie of information
 def omdb_search(move_title):
 	base_url = "http://www.omdbapi.com/?"
 	params_dict = {}
@@ -122,7 +120,7 @@ def omdb_search(move_title):
 		cache_file.close()
 	return response
 
-#class to handle the return value of the OMDB search
+#class to handle the return value of the OMDB search dictionary
 class Movie():
 	def __init__(self,movie_dict):
 		self.title = movie_dict['Title']
@@ -139,50 +137,34 @@ class Movie():
 		self.ratings = movie_dict['Ratings']
 		self.imdbID = movie_dict['imdbID'] #MAKE THIS PRIMARY KEY
 
-	def movie_title(self):
+	def movie_title(self): #returning the title
 		return self.title
 
-	def num_languages(self):
+	def num_languages(self): #returning the number of languages
 		num = self.languages.split(', ')
 		return (len(num))
 
-	def movie_director(self):
+	def movie_director(self): #returning the Director
 		return self.director
 
 	def imdb_ID(self):
 		return self.imdbID #PRIMARY KEY FOR DATABASE
 
-	def list_of_actors(self):
+	def list_of_actors(self): #list of actors
 		return self.actors.split(', ')
 
-	def num1_actor(self):
+	def num1_actor(self): #top actor from list
 		return self.actors.split(', ')[0]
 
-	def imdb_rating(self):
+	def imdb_rating(self): #rating
 		return float(self.imdbrating)
 
-	def movie_genres(self):
-		return self.genre.split(', ')
-
-	def released(self):
-		return self.release_date
-
-	def __str__(self):
+	def __str__(self): #string that has description of movie
 		return "Plot description: {}\n".format(self.plot)
-
-	def rating_sources(self):
-		sources = []
-		for dic in self.ratings:
-			source = dic['Source']
-			value = dic['Value']
-			tup = (source, value)
-			sources.append(tup)
-		return sources
-
 
 ######### ORGANIZING THE DATA ###########
 list_of_movies = ['the avengers', 'the big short', 'moonlight', 'la la land', 'deadpool', 'zootopia']
-movie_requests = [omdb_search(movie) for movie in list_of_movies] #list comprehension of instances of movies in the Movie class
+movie_requests = [omdb_search(movie) for movie in list_of_movies] #list comprehension of getting a dictionary of data for each movie
 # print(movie_requests)
 movie_class_instances = [Movie(movie) for movie in movie_requests] #list comprehension for movie instances
 top_actors_of_movies_not_repeated = []
@@ -190,6 +172,7 @@ for movie in movie_class_instances:
 	actor_name = movie.num1_actor() #getting the top actor for every movie
 	if actor_name not in top_actors_of_movies_not_repeated:
 		top_actors_of_movies_not_repeated.append(actor_name)
+
 #passing information into database
 movie_table = []
 for movie in movie_class_instances:
@@ -199,9 +182,9 @@ for movie in movie_class_instances:
 	languages = movie.num_languages()
 	imdbRating = movie.imdb_rating()
 	top_actor = movie.num1_actor()
-	tup = (imdbID, title, director, languages, imdbRating, top_actor)
+	plot = movie.__str__()
+	tup = (imdbID, title, director, languages, imdbRating, top_actor, plot)
 	movie_table.append(tup)
-
 
 dic_of_twitter_search = {actor: twitter_search(actor) for actor in top_actors_of_movies_not_repeated} #dictionary comprehension; actor name is key, and its value is a list of dictionaries containing tweets about each of the actors
 abc = [] #creating a list of lists that contain tuples of twitter information; using this to make it easier to unpack to the datebase
@@ -209,6 +192,7 @@ for actor in top_actors_of_movies_not_repeated:
 	abc.append(twitter_search(actor))
 # print(json.dumps(abc, indent = 2))
 
+#list of tuples containing twitter handles from text
 handles_of_mentions = []
 for ls in abc:
 	for tup in ls:
@@ -216,6 +200,7 @@ for ls in abc:
 		names = get_twitter_users(text)
 		handles_of_mentions.append(names)
 
+#creating a list that does not repeat and finds user information for each mention
 nz = []
 for ls in handles_of_mentions:
 	for handle in ls:
@@ -227,7 +212,6 @@ for ls in handles_of_mentions:
 			nz.append(names)
 		else:
 			pass
-
 for ls in abc:
 	for tup in ls:
 		name = tup[2]
@@ -262,12 +246,11 @@ cur.execute(table_spec)
 
 #movies db
 table_spec = "CREATE TABLE IF NOT EXISTS "
-table_spec += "Movies (imdbID PRIMARY KEY, title TEXT, director TEXT, languages INTEGER, imdbRating INTEGER, top_actor TEXT)"
+table_spec += "Movies (imdbID PRIMARY KEY, title TEXT, director TEXT, languages INTEGER, imdbRating INTEGER, top_actor TEXT, plot TEXT)"
 cur.execute(table_spec)
 
-
 ######### EXECUTING THE DATA INTO THE TABLES ###########
-statement = 'INSERT INTO Movies VALUES (?,?,?,?,?,?)'
+statement = 'INSERT INTO Movies VALUES (?,?,?,?,?,?,?)'
 for m in movie_table:
 	cur.execute(statement, m)
 conn.commit()
@@ -285,7 +268,7 @@ for tup in nz:
 	cur.execute(statement, tup)
 conn.commit()
 
-######### THE QUERIES ###########
+######### QUERIES ###########
 x = "SELECT Users.screen_name, Tweets.text , Tweets.retweets, Tweets.actor_search FROM Users INNER JOIN Tweets on Tweets.screen_name=Users.screen_name WHERE Tweets.retweets > 100"
 cur.execute(x)
 popular_actors = cur.fetchall()
@@ -336,8 +319,17 @@ for ht in y:
 		hashtags[ht] += 1
 # print(hashtags) 
 
+######### CSV OUTFILE ###########
+outfile = open("finalproject_outfile.txt", "w")
+
+outfile.write("MOVIES: 'the avengers', 'the big short', 'moonlight', 'la la land', 'deadpool', 'zootopia' \nTWITTER SUMMARY: searched the top actor of each movie and retreived the tweets \nDATE: 4/24/17\n\n\n\n")
+outfile.write("1. Dictionary with top actors and their most popular tweets based on retweets:\n" + str(twitter_info_diction)+"\n\n\n\n")
+outfile.write("2. Dictionary of movies in which teir top actor was tweeted about most\n" + str(dicto)+"\n\n\n\n")
+outfile.write("3. Grabbed screen names and gave their top tweets and their retweet values\n" + str(user_dict)+"\n\n\n\n")
+outfile.write("4. Most common hashtags from tweets from the top actor of each movie\n" + str(hashtags)+"\n\n\n\n")
 
 
+outfile.close()
 conn.close()
 #########
 print("*** OUTPUT OF TESTS BELOW THIS LINE ***\n")
@@ -377,19 +369,18 @@ class OMDB(unittest.TestCase):
 		self.assertEqual(movie["Released"], "17 Jun 1988")
 
 class Movie(unittest.TestCase):
-	#i am confused abut why these test cases are not good?
 	def test_movie_class1(self):
-		x = omdb_search("la la land")
-		movie_s = Movie(x)
-		self.assertEqual(movie_s.imdb_rating(), 6.6, "testing that this method will return a float")
-	# def test_movie_class2(self):
-	# 	movie = {"Title":"The Great Outdoors","Year":"1988","Rated":"PG","Released":"17 Jun 1988","Runtime":"91 min","Genre":"Comedy","Director":"Howard Deutch","Writer":"John Hughes","Actors":"Dan Aykroyd, John Candy, Stephanie Faracy, Annette Bening","Plot":"A Chicago man's hope for a peaceful family vacation in the woods is shattered when the annoying in-laws drop in.","Language":"English","Country":"USA","Awards":"N/A","Poster":"https://images-na.ssl-images-amazon.com/images/M/MV5BZDVkNDQ3MDItZTBlOS00ZGU0LTk0ZDUtYmE2YzNmOTM4YzBhXkEyXkFqcGdeQXVyMjU5OTg5NDc@._V1_SX300.jpg","Ratings":[{"Source":"Internet Movie Database","Value":"6.6/10"},{"Source":"Rotten Tomatoes","Value":"40%"}],"Metascore":"N/A","imdbRating":"6.6","imdbVotes":"29,942","imdbID":"tt0095253","Type":"movie","DVD":"30 Jun 1998","BoxOffice":"N/A","Production":"Universal Pictures","Website":"N/A","Response":"True"}
-	# 	x = Movie(movie)
-	# 	self.assertEqual(x.__str__(), "Plot description: A Chicago man's hope for a peaceful family vacation in the woods is shattered when the annoying in-laws drop in.")
-	# def test_movie_class3(self):
-	# 	movie = {"Title":"The Great Outdoors","Year":"1988","Rated":"PG","Released":"17 Jun 1988","Runtime":"91 min","Genre":"Comedy","Director":"Howard Deutch","Writer":"John Hughes","Actors":"Dan Aykroyd, John Candy, Stephanie Faracy, Annette Bening","Plot":"A Chicago man's hope for a peaceful family vacation in the woods is shattered when the annoying in-laws drop in.","Language":"English","Country":"USA","Awards":"N/A","Poster":"https://images-na.ssl-images-amazon.com/images/M/MV5BZDVkNDQ3MDItZTBlOS00ZGU0LTk0ZDUtYmE2YzNmOTM4YzBhXkEyXkFqcGdeQXVyMjU5OTg5NDc@._V1_SX300.jpg","Ratings":[{"Source":"Internet Movie Database","Value":"6.6/10"},{"Source":"Rotten Tomatoes","Value":"40%"}],"Metascore":"N/A","imdbRating":"6.6","imdbVotes":"29,942","imdbID":"tt0095253","Type":"movie","DVD":"30 Jun 1998","BoxOffice":"N/A","Production":"Universal Pictures","Website":"N/A","Response":"True"}
-	# 	x = Movie(movie)
-	# 	self.assertEqual(x.num1_actor(), "Dan Aykroyd")
+		asdf = omdb_search("la la land")
+		movie_s = Movie(asdf)
+		self.assertEqual(movie_s.imdb_rating(), 8.3, "testing that this method will return a float")
+	def test_movie_class2(self):
+		movie = {"Title":"The Great Outdoors","Year":"1988","Rated":"PG","Released":"17 Jun 1988","Runtime":"91 min","Genre":"Comedy","Director":"Howard Deutch","Writer":"John Hughes","Actors":"Dan Aykroyd, John Candy, Stephanie Faracy, Annette Bening","Plot":"A Chicago man's hope for a peaceful family vacation in the woods is shattered when the annoying in-laws drop in.","Language":"English","Country":"USA","Awards":"N/A","Poster":"https://images-na.ssl-images-amazon.com/images/M/MV5BZDVkNDQ3MDItZTBlOS00ZGU0LTk0ZDUtYmE2YzNmOTM4YzBhXkEyXkFqcGdeQXVyMjU5OTg5NDc@._V1_SX300.jpg","Ratings":[{"Source":"Internet Movie Database","Value":"6.6/10"},{"Source":"Rotten Tomatoes","Value":"40%"}],"Metascore":"N/A","imdbRating":"6.6","imdbVotes":"29,942","imdbID":"tt0095253","Type":"movie","DVD":"30 Jun 1998","BoxOffice":"N/A","Production":"Universal Pictures","Website":"N/A","Response":"True"}
+		x = Movie(movie)
+		self.assertEqual(x.__str__(), "Plot description: A Chicago man's hope for a peaceful family vacation in the woods is shattered when the annoying in-laws drop in.")
+	def test_movie_class3(self):
+		movie = {"Title":"The Great Outdoors","Year":"1988","Rated":"PG","Released":"17 Jun 1988","Runtime":"91 min","Genre":"Comedy","Director":"Howard Deutch","Writer":"John Hughes","Actors":"Dan Aykroyd, John Candy, Stephanie Faracy, Annette Bening","Plot":"A Chicago man's hope for a peaceful family vacation in the woods is shattered when the annoying in-laws drop in.","Language":"English","Country":"USA","Awards":"N/A","Poster":"https://images-na.ssl-images-amazon.com/images/M/MV5BZDVkNDQ3MDItZTBlOS00ZGU0LTk0ZDUtYmE2YzNmOTM4YzBhXkEyXkFqcGdeQXVyMjU5OTg5NDc@._V1_SX300.jpg","Ratings":[{"Source":"Internet Movie Database","Value":"6.6/10"},{"Source":"Rotten Tomatoes","Value":"40%"}],"Metascore":"N/A","imdbRating":"6.6","imdbVotes":"29,942","imdbID":"tt0095253","Type":"movie","DVD":"30 Jun 1998","BoxOffice":"N/A","Production":"Universal Pictures","Website":"N/A","Response":"True"}
+		x = Movie(movie)
+		self.assertEqual(x.num1_actor(), "Dan Aykroyd")
 
 class Other(unittest.TestCase):
 	def test_list_of_movies(self):
